@@ -18,8 +18,10 @@ int main(){
 	struct in_addr *addr;
 
 
-	if(gethostname(bufferino,128)==-1)
+	if(gethostname(bufferino,128)==-1){
 		fprintf(stderr, "error %s\n", strerror(errno));
+		exit 0;
+	}
 
 
 	memset(&hints, 0, sizeof(hints));
