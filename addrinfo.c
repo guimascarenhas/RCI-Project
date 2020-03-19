@@ -20,7 +20,7 @@ int main(){
 
 	if(gethostname(bufferino,128)==-1){
 		fprintf(stderr, "error %s\n", strerror(errno));
-		exit 0;
+		exit(0);
 	}
 
 
