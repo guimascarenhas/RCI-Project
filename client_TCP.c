@@ -16,7 +16,7 @@ int main(){
 	socklen_t addrlen;
 	struct addrinfo hints,*res;
 	struct sockaddr_in addr;
-	char buffer[128],buffer1[128];
+	char buffer[128],buffer1[128], text[128];
 
 	fd=socket(AF_INET,SOCK_STREAM,0);//TCP socket
 	if (fd==-1) exit(1); //error
@@ -33,8 +33,12 @@ int main(){
 	
 	n= connect (fd,res->ai_addr,res->ai_addrlen);
 	if(n==-1)/*error*/exit(1);
-	
-	n=write (fd,"Hello!\n",7);
+	printf("connected\n");
+
+	printf("ENTER TEXT:\n");
+	scanf("%s",text);
+	strcat(text,"\n");
+	n=write (fd,text,strlen(text));
 	if(n==-1)/*error*/exit(1);
 
 	n= read (fd,buffer,128);
