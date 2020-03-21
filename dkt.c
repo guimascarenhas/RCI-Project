@@ -28,7 +28,7 @@ int main(int argc, char *argv[]){
 		printf("Missing arguments when calling dkt\n");
 		exit(1);
 	}
-
+	// fazer verificação se é introduzido um porto e um ID corretos - ID tem de ter aquele formato especifico e PORTO é um número entre 1024 e (..)
 
 	//create socket
 	fd=socket(AF_INET, SOCK_STREAM, 0);
@@ -65,9 +65,11 @@ int main(int argc, char *argv[]){
 
 	while(1){
 		FD_ZERO(&rfds);
-		FD_SET(0,&rfds);	
-		if(maxfd==0) FD_SET(fd,&rfds);	//skips the first iteration of the loop
+		FD_SET(0,&rfds);
+		//FD_SET(fd,&rfds);
+		if(maxfd==0) FD_SET(fd,&rfds);	//skips the first iteration of the loop -> (maxfd==0)
 		maxfd=fd;
+
 		if(state==busy)	{
 			FD_SET(afd,&rfds);
 			maxfd=max(maxfd,afd);
@@ -77,16 +79,17 @@ int main(int argc, char *argv[]){
 		if(counter<=0) exit(1);
 
 		if(FD_ISSET(fd,&rfds)){
-
 			addrlen=sizeof(addr);
+
 			if((newfd=accept(fd, (struct sockaddr*)&addr, &addrlen))==-1) exit(1);
+
 			switch(state){
 				case idle:	afd=newfd;
 							state=busy;
 							printf("Client connected\n");
 							break;
-
-				case busy:	close(newfd);
+				case busy:	write(newfd,"busy, go away!\n",16);
+							close(newfd);
 			}
 		}
 
@@ -95,6 +98,9 @@ int main(int argc, char *argv[]){
 				if(n==-1) exit(1);
 				write(1, "received: ",10);
 				write(1, buffer, n);
+
+				n=write(afd,buffer,n);
+                if(n==-1) exit(1);
 			}
 			else{
 				close(afd);
@@ -103,10 +109,11 @@ int main(int argc, char *argv[]){
 		}
 
 		if(FD_ISSET(0,&rfds)){
+			printf("PORT 0 is set\n");
+			maxfd=0;
 			fgets(buffer, 128, stdin);
 			printf("inserido: %s", buffer);
 		}
-
 
 	}
 	exit(0);
