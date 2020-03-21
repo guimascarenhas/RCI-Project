@@ -22,7 +22,7 @@ int main(int argc, char *argv[]){
 	char buffer[128];
 	fd_set rfds;
 	enum {idle, busy} state;
-	int maxfd=0, counter;
+	int maxfd, counter;
 
 	if(argc < 3){
 		printf("Missing arguments when calling dkt\n");
@@ -36,6 +36,7 @@ int main(int argc, char *argv[]){
 		printf("Could not create socket\n");
 		exit(1);
 	}
+
 
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family=AF_INET;
@@ -66,7 +67,7 @@ int main(int argc, char *argv[]){
 	while(1){
 		FD_ZERO(&rfds);
 		FD_SET(0,&rfds);	
-		if(maxfd==0) FD_SET(fd,&rfds);	//skips the first iteration of the loop
+		FD_SET(fd,&rfds);	
 		maxfd=fd;
 		if(state==busy)	{
 			FD_SET(afd,&rfds);
@@ -77,7 +78,6 @@ int main(int argc, char *argv[]){
 		if(counter<=0) exit(1);
 
 		if(FD_ISSET(fd,&rfds)){
-
 			addrlen=sizeof(addr);
 			if((newfd=accept(fd, (struct sockaddr*)&addr, &addrlen))==-1) exit(1);
 			switch(state){
@@ -86,7 +86,8 @@ int main(int argc, char *argv[]){
 							printf("Client connected\n");
 							break;
 
-				case busy:	close(newfd);
+				case busy:	write(newfd, "Busy\n", 5);
+							close(newfd);
 			}
 		}
 
@@ -99,12 +100,16 @@ int main(int argc, char *argv[]){
 			else{
 				close(afd);
 				state = idle;
+				printf("Client disconnected\n");
 			}
 		}
 
+
 		if(FD_ISSET(0,&rfds)){
-			fgets(buffer, 128, stdin);
-			printf("inserido: %s", buffer);
+			if((n=read(STDIN_FILENO,buffer,128))!=0){
+			write(afd, buffer, n);
+			printf("sent: %s", buffer);
+			}
 		}
 
 
