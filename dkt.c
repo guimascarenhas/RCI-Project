@@ -7,13 +7,36 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
+#include <math.h>
 #define max(A,B) ((A)>=(B)?(A):(B))
 #define AAA printf("aqui\n");
+#define N 16
 
 extern int errno;
 
+float dN(int k,int l);
+int dist(int k, int l);
+
+int dist(int k, int l){
+	int d=0;
+
+	if(k>l){
+		d= N-(k-l);
+	}
+	else{
+		d=l-k;
+	}
+
+	return d;
+}
+
+float dN(int k, int l){
+	return (abs((l-k))/(float)N);
+}
+
 int main(int argc, char *argv[]){
 
+	int k,l;
 	int fd, newfd, afd=0;
 	ssize_t n;
 	socklen_t addrlen;
@@ -28,7 +51,6 @@ int main(int argc, char *argv[]){
 		printf("Missing arguments when calling dkt\n");
 		exit(1);
 	}
-
 
 	//create socket
 	fd=socket(AF_INET, SOCK_STREAM, 0);
