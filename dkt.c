@@ -7,50 +7,45 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
-#include <math.h>
 #define max(A,B) ((A)>=(B)?(A):(B))
 #define AAA printf("aqui\n");
-#define N 16
+
+typedef struct {
+	int node_key;
+	char nodeIP[20];
+	int succ_key;
+	char succIP[20];
+	int succ2;
+	char succ2IP[20];
+}stateInfo;
+
 
 extern int errno;
+stateInfo server;
 
-float dN(int k,int l);
-int dist(int k, int l);
+int UserInput();
+int CreateRing();
 
-int dist(int k, int l){
-	int d=0;
-
-	if(k>l){
-		d= N-(k-l);
-	}
-	else{
-		d=l-k;
-	}
-
-	return d;
-}
-
-float dN(int k, int l){
-	return (abs((l-k))/(float)N);
-}
 
 int main(int argc, char *argv[]){
 
-	int k,l;
 	int fd, newfd, afd=0;
 	ssize_t n;
 	socklen_t addrlen;
 	struct addrinfo hints, *res;
 	struct sockaddr_in addr;
-	char buffer[128];
+	char buffer[128], text[128];
 	fd_set rfds;
 	enum {idle, busy} state;
 	int maxfd, counter;
+	int i=0;
+
 
 	if(argc < 3){
 		printf("Missing arguments when calling dkt\n");
 		exit(1);
 	}
+
 
 	//create socket
 	fd=socket(AF_INET, SOCK_STREAM, 0);
@@ -113,7 +108,7 @@ int main(int argc, char *argv[]){
 			}
 		}
 
-		if(FD_ISSET(afd,&rfds)){
+		if(state == busy && FD_ISSET(afd,&rfds)){
 			if((n=read(afd,buffer,128))!=0){
 				if(n==-1) exit(1);
 				write(1, "received: ",10);
@@ -128,13 +123,96 @@ int main(int argc, char *argv[]){
 
 
 		if(FD_ISSET(0,&rfds)){
-			if((n=read(STDIN_FILENO,buffer,128))!=0){
-			write(afd, buffer, n);
-			printf("sent: %s", buffer);
+			i=UserInput();
+			if(i==1){
+				printf("Invalid command\n");
 			}
+			else if(i==-1){
+				printf("Closing dkt\n");
+			}
+			/*if(state == busy){
+				n=write (afd,buffer,strlen(buffer));
+				if(n==-1)/
+					exit(1);
+				printf("sent: %s", buffer);
+			
+				}*/
 		}
 
 
 	}
 	exit(0);
+}
+
+int UserInput(){
+
+	int n=-1, i=-1;
+	char option[10]="\0", input[128]="\0";
+
+	if(fgets(input, 128, stdin)==NULL){
+		return 1;
+	}
+
+	if(!sscanf(input, " %s", option)){
+		return 1;
+	}
+
+	if(strcmp(option, "new")==0){
+
+
+		printf("%s selected\n", option);
+		CreateRing();
+		return 0;
+	}
+
+	if(strcmp(option, "entry")==0){
+
+		printf("%s selected\n", option);
+		return 0;
+	}
+
+	if(strcmp(option, "sentry")==0){
+
+		printf("%s selected\n", option);
+		return 0;
+	}
+
+	if(strcmp(option, "leave")==0){
+
+		printf("%s selected\n", option);
+		return 0;
+	}
+
+	if(strcmp(option, "show")==0){
+
+		printf("%s selected\n", option);
+		return 0;
+	}
+
+	if(strcmp(option, "find")==0){
+
+		printf("%s selected\n", option);
+		return 0;
+	}
+
+	if(strcmp(option, "exit")==0){
+
+		printf("%s selected\n", option);
+		return -1;
+	}
+
+	return 1;
+
+}
+
+int CreateRing(){
+	/*
+
+		coisas
+
+
+	*/
+	printf("Ring created\n");
+	return 0;
+
 }
