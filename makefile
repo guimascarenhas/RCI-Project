@@ -1,8 +1,8 @@
 CC=gcc
 CFLAGS=
 LIBS= 
-SOURCES = dkt.c
-OBJECTS = dkt.o
+SOURCES = dkt.c headers.c
+OBJECTS = dkt.o headers.o
 
 
 dkt: $(OBJECTS)

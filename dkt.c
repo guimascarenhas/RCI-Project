@@ -7,24 +7,23 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
+#include "headers.c"
 #define max(A,B) ((A)>=(B)?(A):(B))
 #define AAA printf("aqui\n");
+#define MAX_KEY 100
 
 typedef struct {
 	int node_key;
 	char nodeIP[20];
 	int succ_key;
 	char succIP[20];
-	int succ2;
+	int succ2_key;
 	char succ2IP[20];
 }stateInfo;
 
 
 extern int errno;
 stateInfo server;
-
-int UserInput();
-int CreateRing();
 
 
 int main(int argc, char *argv[]){
@@ -34,7 +33,7 @@ int main(int argc, char *argv[]){
 	socklen_t addrlen;
 	struct addrinfo hints, *res;
 	struct sockaddr_in addr;
-	char buffer[128], text[128];
+	char buffer[128], text[128], host[20];
 	fd_set rfds;
 	enum {idle, busy} state;
 	int maxfd, counter;
@@ -46,7 +45,12 @@ int main(int argc, char *argv[]){
 		exit(1);
 	}
 
+	//stores host info with the format: boot.IP:boot.TCP   
+	strcpy(server.nodeIP, argv[1]);
+	strcat(server.nodeIP, ":");
+	strcat(server.nodeIP, argv[2]);
 
+	server.node_key=-1;
 	//create socket
 	fd=socket(AF_INET, SOCK_STREAM, 0);
 	if(fd==-1){
@@ -146,56 +150,58 @@ int main(int argc, char *argv[]){
 
 int UserInput(){
 
-	int n=-1, i=-1;
+	int i=-1;
 	char option[10]="\0", input[128]="\0";
 
 	if(fgets(input, 128, stdin)==NULL){
 		return 1;
 	}
 
-	if(!sscanf(input, " %s", option)){
-		return 1;
-	}
+	if(!sscanf(input, " %s", option)) return 1;
 
 	if(strcmp(option, "new")==0){
 
+		if(sscanf(input, " %s %d", option, &i)==2 && i<MAX_KEY){
+				printf("%s selected\n", option);
+				CreateRing(i);
+				return 0;
+		}
 
-		printf("%s selected\n", option);
-		CreateRing();
-		return 0;
+		return 1;
 	}
 
-	if(strcmp(option, "entry")==0){
-
-		printf("%s selected\n", option);
-		return 0;
-	}
-
-	if(strcmp(option, "sentry")==0){
+	else if(strcmp(option, "entry")==0){
 
 		printf("%s selected\n", option);
 		return 0;
 	}
 
-	if(strcmp(option, "leave")==0){
+	else if(strcmp(option, "sentry")==0){
 
 		printf("%s selected\n", option);
 		return 0;
 	}
 
-	if(strcmp(option, "show")==0){
+	else if(strcmp(option, "leave")==0){
 
 		printf("%s selected\n", option);
 		return 0;
 	}
 
-	if(strcmp(option, "find")==0){
+	else if(strcmp(option, "show")==0){
+
+		printf("%s selected\n", option);
+		ShowState();
+		return 0;
+	}
+
+	else if(strcmp(option, "find")==0){
 
 		printf("%s selected\n", option);
 		return 0;
 	}
 
-	if(strcmp(option, "exit")==0){
+	else if(strcmp(option, "exit")==0){
 
 		printf("%s selected\n", option);
 		return -1;
@@ -205,14 +211,31 @@ int UserInput(){
 
 }
 
-int CreateRing(){
-	/*
+int CreateRing(int i){
+	
+	server.node_key = i;
+	server.succ_key = i;
+	server.succ2_key = i;
+	strcpy(server.succIP, server.nodeIP);
+	strcpy(server.succ2IP, server.nodeIP);
 
-		coisas
-
-
-	*/
 	printf("Ring created\n");
 	return 0;
 
+}
+
+void ShowState(){
+	printf("\nState info:\n");
+	printf("\t \t node IP and Port:%s\n", server.nodeIP);
+	if(server.node_key == -1){
+		return;
+	}
+	else{
+		printf("\t \t node_key: %d\n\n", server.node_key);
+		printf("\t \t succ IP and Port: %s\n", server.succIP);
+		printf("\t \t succ_key: %d\n\n", server.succ_key);
+		printf("\t \t succ2 IP and Port: %s\n", server.succ2IP);
+		printf("\t \t succ2_key: %d\n", server.succ2_key);
+	}
+	return;
 }
