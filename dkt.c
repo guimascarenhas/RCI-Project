@@ -12,7 +12,7 @@
 #define AAA printf("aqui\n");
 #define MAX_KEY 100
 
-typedef struct {
+typedef struct stateInfo{
 	int node_key;
 	char nodeIP[20];
 	int succ_key;
@@ -21,6 +21,7 @@ typedef struct {
 	char succ2IP[20];
 }stateInfo;
 
+int ReceivedMessageDealer(struct stateInfo* server,char *buffer);
 
 extern int errno;
 stateInfo server, aux_succi;
@@ -28,12 +29,12 @@ stateInfo server, aux_succi;
 
 int main(int argc, char *argv[]){
 
-	int fd, newfd, afd=0,maxfd, counter,i=0,k=0;
+	int fd, newfd, afd=0,maxfd, counter,i=0,j=0;
 	ssize_t n;
 	socklen_t addrlen;
 	struct addrinfo hints, *res;
 	struct sockaddr_in addr;
-	char buffer[128], text[128], host[20], info[4][20];
+	char buffer[128], text[128], host[20], info[5][20];
 	fd_set rfds;
 	enum {idle, busy} state;
 	char *token;
@@ -117,7 +118,27 @@ int main(int argc, char *argv[]){
 				write(1, "received: ",10);
 				write(1, buffer, n);
 
-				token=strtok(buffer," ");
+				j=ReceivedMessageDealer(&server,buffer);
+				if(j==1){
+				printf("Invalid msg\n");
+				}
+				else if(j==-1){
+					printf("Closing dkt\n");
+				}
+				/*if(sscanf(buffer,"%s %s %s %s",info[0],info[1],info[2],info[3])==4){
+					printf("info 0:%s \n info 1:%s \n info 2:%s \n info 3:%s \n",info[0],info[1],info[2],info[3] );
+					if(strcmp(info[0],"NEW")==0){
+						server.succ_key = atoi(info[1]);
+						strcpy(server.succIP, info[2]);
+						strcat(server.succIP, ":");
+						strcat(server.succIP, info[3]);
+						printf("SUCCESS\n");
+					}
+				}*/
+
+
+
+				/*token=strtok(buffer," ");
 
 				if(strcmp(token,"NEW")==0 && k<4){ //a condição k<4 é só para ignorar o \n que está no buffer
 					//atualiza a info sobre o seu sucessor
@@ -135,7 +156,7 @@ int main(int argc, char *argv[]){
 					strcat(server.succIP, info[3]);
 					
 
-				}
+				}*/
 
 			}
 			else{
@@ -170,7 +191,7 @@ int main(int argc, char *argv[]){
 
 int UserInput(int fd, struct addrinfo *res){
 
-	int i=-1, succi=0, succiPORTO=0;
+	int i=-1, succi=0, succiPORTO=0,flag=0;
 	char option[10]="\0", input[128]="\0", succiIP[9]="\n";
 
 	if(fgets(input, 128, stdin)==NULL){
@@ -180,11 +201,12 @@ int UserInput(int fd, struct addrinfo *res){
 	if(!sscanf(input, " %s", option)) return 1;
 
 
-	if(strcmp(option, "new")==0){
+	if(strcmp(option, "new")==0 && flag<1){ //esta flag vai ser incrementada quando se cria o anel para que não se possa criar outro anel por cima 
 
 		if(sscanf(input, " %s %d", option, &i)==2 && i<MAX_KEY){
 				printf("%s selected\n", option);
 				CreateRing(i);
+				flag++;
 				return 0;
 		}
 
@@ -236,6 +258,81 @@ int UserInput(int fd, struct addrinfo *res){
 	return 1;
 }
 
+int ReceivedMessageDealer(struct stateInfo* server,char *buffer){
+	char info[5][20];
+
+	printf("%s\n", buffer);
+
+	if(!sscanf(buffer, " %s", info[0])) return 1;
+
+	if(strcmp(info[0],"SUCCCONF")==0){
+		if(sscanf(buffer,"%s",info[0])==1){
+
+			return 0;
+		}
+		else{printf("BUG!\n");return 1;}
+
+	}
+	else if(strcmp(info[0],"EFND")==0){
+		if(sscanf(buffer,"%s %s",info[0],info[1])==2){
+			//info[1] é a chave que se quer que o servidor que recebeu esta msg procure, ou seja, este servidor tem de procurar por esta chave
+
+			return 0;
+		}
+		else{printf("BUG!\n");return 1;}
+		
+	}
+	else if(strcmp(info[0],"NEW")==0){
+		if(sscanf(buffer,"%s %s %s %s",info[0],info[1],info[2],info[3])==4){
+			printf(" info 0:%s \n info 1:%s \n info 2:%s \n info 3:%s \n",info[0],info[1],info[2],info[3] );
+			server->succ_key = atoi(info[1]);
+			strcpy(server->succIP, info[2]);
+			strcat(server->succIP, ":");
+			strcat(server->succIP, info[3]);
+			return 0;
+		}
+		else{printf("BUG!\n");return 1;}
+	}
+	else if(strcmp(info[0],"SUCC")==0){
+		if(sscanf(buffer,"%s %s %s %s",info[0],info[1],info[2],info[3])==4){
+
+			return 0;
+		}
+		else{printf("11111 BUG!\n");return 1;}
+		
+	}
+	else if(strcmp(info[0],"FND")==0){
+		if(sscanf(buffer,"%s %s %s %s %s",info[0],info[1],info[2],info[3],info[4])==5){
+
+			return 0;
+		}
+		else{printf("BUG!\n"); return 1;}
+		
+	}
+	else if(strcmp(info[0],"KEY")==0){
+		if(sscanf(buffer,"%s %s %s %s %s",info[0],info[1],info[2],info[3],info[4])==5){
+
+			return 0;
+		}
+		else{printf("BUG!\n"); return 1;}
+				
+	}
+	else if(strcmp(info[0],"EKEY")==0){
+		if(sscanf(buffer,"%s %s %s %s %s",info[0],info[1],info[2],info[3],info[4])==5){
+
+		return 0;
+		}
+		else{printf("BUG!\n"); return 1;}
+	}
+	else{
+		return 1;
+	}
+
+	
+	return 0;
+
+}
+
 int CreateRing(int i){
 	
 	server.node_key = i;
@@ -264,6 +361,7 @@ void ShowState(){
 	}
 	return;
 }
+
 void sEntry(int fd, int i, int succi, char *succiIP, int succiPORTO){
 	int n=0;
 	char text[50], PORT[9];
