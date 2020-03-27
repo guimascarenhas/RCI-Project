@@ -34,10 +34,9 @@ int main(int argc, char *argv[]){
 	socklen_t addrlen;
 	struct addrinfo hints, *res;
 	struct sockaddr_in addr;
-	char buffer[128], text[128], host[20], info[5][20];
+	char buffer[128], info[5][20];
 	fd_set rfds;
 	enum {idle, busy} state;
-	char *token;
 
 
 	if(argc < 3){
@@ -120,43 +119,8 @@ int main(int argc, char *argv[]){
 
 				j=ReceivedMessageDealer(&server,buffer);
 				if(j==1){
-				printf("Invalid msg\n");
+					printf("Invalid msg\n");
 				}
-				else if(j==-1){
-					printf("Closing dkt\n");
-				}
-				/*if(sscanf(buffer,"%s %s %s %s",info[0],info[1],info[2],info[3])==4){
-					printf("info 0:%s \n info 1:%s \n info 2:%s \n info 3:%s \n",info[0],info[1],info[2],info[3] );
-					if(strcmp(info[0],"NEW")==0){
-						server.succ_key = atoi(info[1]);
-						strcpy(server.succIP, info[2]);
-						strcat(server.succIP, ":");
-						strcat(server.succIP, info[3]);
-						printf("SUCCESS\n");
-					}
-				}*/
-
-
-
-				/*token=strtok(buffer," ");
-
-				if(strcmp(token,"NEW")==0 && k<4){ //a condição k<4 é só para ignorar o \n que está no buffer
-					//atualiza a info sobre o seu sucessor
-					while( token != NULL ){
-						strcpy(info[k],token);
-				    	token = strtok(NULL," ");
-				    	k++;
-				   	}
-
-					printf(" info 1:%s \n info 2:%s \n info 3:%s \n",info[1],info[2],info[3] );
-					
-					server.succ_key = atoi(info[1]);
-					strcpy(server.succIP, info[2]);
-					strcat(server.succIP, ":");
-					strcat(server.succIP, info[3]);
-					
-
-				}*/
 
 			}
 			else{
@@ -270,7 +234,7 @@ int ReceivedMessageDealer(struct stateInfo* server,char *buffer){
 
 			return 0;
 		}
-		else{printf("BUG!\n");return 1;}
+		else{printf("BUG-SUCCCONF!\n");return 1;}
 
 	}
 	else if(strcmp(info[0],"EFND")==0){
@@ -279,7 +243,7 @@ int ReceivedMessageDealer(struct stateInfo* server,char *buffer){
 
 			return 0;
 		}
-		else{printf("BUG!\n");return 1;}
+		else{printf("BUG-EFND!\n");return 1;}
 		
 	}
 	else if(strcmp(info[0],"NEW")==0){
@@ -289,16 +253,19 @@ int ReceivedMessageDealer(struct stateInfo* server,char *buffer){
 			strcpy(server->succIP, info[2]);
 			strcat(server->succIP, ":");
 			strcat(server->succIP, info[3]);
+
+			//write do SUCC de volta para o servidor entrante
+
 			return 0;
 		}
-		else{printf("BUG!\n");return 1;}
+		else{printf("BUG-NEW!\n");return 1;}
 	}
 	else if(strcmp(info[0],"SUCC")==0){
 		if(sscanf(buffer,"%s %s %s %s",info[0],info[1],info[2],info[3])==4){
 
 			return 0;
 		}
-		else{printf("11111 BUG!\n");return 1;}
+		else{printf("BUG-SUCC!\n");return 1;}
 		
 	}
 	else if(strcmp(info[0],"FND")==0){
@@ -306,7 +273,7 @@ int ReceivedMessageDealer(struct stateInfo* server,char *buffer){
 
 			return 0;
 		}
-		else{printf("BUG!\n"); return 1;}
+		else{printf("BUG-FND!\n"); return 1;}
 		
 	}
 	else if(strcmp(info[0],"KEY")==0){
@@ -314,7 +281,7 @@ int ReceivedMessageDealer(struct stateInfo* server,char *buffer){
 
 			return 0;
 		}
-		else{printf("BUG!\n"); return 1;}
+		else{printf("BUG-KEY!\n"); return 1;}
 				
 	}
 	else if(strcmp(info[0],"EKEY")==0){
@@ -322,7 +289,7 @@ int ReceivedMessageDealer(struct stateInfo* server,char *buffer){
 
 		return 0;
 		}
-		else{printf("BUG!\n"); return 1;}
+		else{printf("BUG-EKEY!\n"); return 1;}
 	}
 	else{
 		return 1;
@@ -330,7 +297,6 @@ int ReceivedMessageDealer(struct stateInfo* server,char *buffer){
 
 	
 	return 0;
-
 }
 
 int CreateRing(int i){
@@ -343,7 +309,6 @@ int CreateRing(int i){
 
 	printf("Ring created\n");
 	return 0;
-
 }
 
 void ShowState(){
