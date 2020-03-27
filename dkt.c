@@ -23,21 +23,20 @@ typedef struct {
 
 
 extern int errno;
-stateInfo server;
+stateInfo server, aux_succi;
 
 
 int main(int argc, char *argv[]){
 
-	int fd, newfd, afd=0;
+	int fd, newfd, afd=0,maxfd, counter,i=0,k=0;
 	ssize_t n;
 	socklen_t addrlen;
 	struct addrinfo hints, *res;
 	struct sockaddr_in addr;
-	char buffer[128], text[128], host[20];
+	char buffer[128], text[128], host[20], info[4][20];
 	fd_set rfds;
 	enum {idle, busy} state;
-	int maxfd, counter;
-	int i=0;
+	char *token;
 
 
 	if(argc < 3){
@@ -117,6 +116,27 @@ int main(int argc, char *argv[]){
 				if(n==-1) exit(1);
 				write(1, "received: ",10);
 				write(1, buffer, n);
+
+				token=strtok(buffer," ");
+
+				if(strcmp(token,"NEW")==0 && k<4){ //a condição k<4 é só para ignorar o \n que está no buffer
+					//atualiza a info sobre o seu sucessor
+					while( token != NULL ){
+						strcpy(info[k],token);
+				    	token = strtok(NULL," ");
+				    	k++;
+				   	}
+
+					printf(" info 1:%s \n info 2:%s \n info 3:%s \n",info[1],info[2],info[3] );
+					
+					server.succ_key = atoi(info[1]);
+					strcpy(server.succIP, info[2]);
+					strcat(server.succIP, ":");
+					strcat(server.succIP, info[3]);
+					
+
+				}
+
 			}
 			else{
 				close(afd);
@@ -127,7 +147,7 @@ int main(int argc, char *argv[]){
 
 
 		if(FD_ISSET(0,&rfds)){
-			i=UserInput();
+			i=UserInput(fd,res); // NOTA: ACHO QUE NÃO É ESTE fd QUE QUEREMOS <--- CHECKAR
 			if(i==1){
 				printf("Invalid command\n");
 			}
@@ -148,16 +168,17 @@ int main(int argc, char *argv[]){
 	exit(0);
 }
 
-int UserInput(){
+int UserInput(int fd, struct addrinfo *res){
 
-	int i=-1;
-	char option[10]="\0", input[128]="\0";
+	int i=-1, succi=0, succiPORTO=0;
+	char option[10]="\0", input[128]="\0", succiIP[9]="\n";
 
 	if(fgets(input, 128, stdin)==NULL){
 		return 1;
 	}
 
 	if(!sscanf(input, " %s", option)) return 1;
+
 
 	if(strcmp(option, "new")==0){
 
@@ -178,8 +199,12 @@ int UserInput(){
 
 	else if(strcmp(option, "sentry")==0){
 
-		printf("%s selected\n", option);
-		return 0;
+		if(sscanf(input, " %s %d %d %s %d", option, &i ,&succi, succiIP, &succiPORTO)==5 && i<MAX_KEY){
+				printf("%s selected\n", option);
+				sEntry(fd,i, succi, succiIP, succiPORTO);
+				return 0;
+		}
+		return 1;
 	}
 
 	else if(strcmp(option, "leave")==0){
@@ -207,8 +232,8 @@ int UserInput(){
 		return -1;
 	}
 
-	return 1;
 
+	return 1;
 }
 
 int CreateRing(int i){
@@ -238,4 +263,41 @@ void ShowState(){
 		printf("\t \t succ2_key: %d\n", server.succ2_key);
 	}
 	return;
+}
+void sEntry(int fd, int i, int succi, char *succiIP, int succiPORTO){
+	int n=0;
+	char text[50], PORT[9];
+	struct addrinfo hints, *res;
+	char *token,*token1; 
+
+	printf("%d %d %s %d\n",i,succi, succiIP,succiPORTO );
+
+	fd=socket(AF_INET,SOCK_STREAM,0);//TCP socket
+	if (fd==-1){printf("couldn't create socket\n"); exit(1);} //error
+
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family=AF_INET;
+	hints.ai_socktype=SOCK_STREAM;
+	hints.ai_flags = AI_PASSIVE;
+
+	//transforma o succiPORTO numa string para usar no getadrinfo
+	sprintf(PORT,"%d",succiPORTO);
+
+	errno=getaddrinfo(succiIP,PORT,&hints,&res) ;
+	if(errno!=0) /*error*/ exit(1);
+
+	n= connect (fd,res->ai_addr,res->ai_addrlen);
+	if(n==-1)/*error*/exit(1);
+	printf("connected\n");
+
+	token=strtok(server.nodeIP,":");
+	token1 = strtok(NULL, ":");
+	sprintf(text,"NEW %d %s %s \n",i, token, token1);
+	printf("text= %s\n",text);
+
+	n=write (fd,text,strlen(text));
+	if(n==-1)/*error*/exit(1);
+
+	//freeaddrinfo(res);
+	//close (fd);
 }
