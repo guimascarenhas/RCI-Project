@@ -7,21 +7,11 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
-#include "headers.c"
+#include "headers.h"
 #define max(A,B) ((A)>=(B)?(A):(B))
 #define AAA printf("aqui\n");
 #define MAX_KEY 100
 
-typedef struct stateInfo{
-	int node_key;
-	char nodeIP[20];
-	int succ_key;
-	char succIP[20];
-	int succ2_key;
-	char succ2IP[20];
-}stateInfo;
-
-int ReceivedMessageDealer(struct stateInfo* server,char *buffer);
 
 extern int errno;
 stateInfo server, aux_succi;
@@ -45,9 +35,11 @@ int main(int argc, char *argv[]){
 	}
 
 	//stores host info with the format: boot.IP:boot.TCP   
-	strcpy(server.nodeIP, argv[1]);
+	/*strcpy(server.nodeIP, argv[1]);
 	strcat(server.nodeIP, ":");
-	strcat(server.nodeIP, argv[2]);
+	strcat(server.nodeIP, argv[2]);*/
+	sprintf(server.nodeIP,"%s:%s", argv[1],argv[2]);
+	//printf("server.nodeIP=%s\n",server.nodeIP );
 
 	server.node_key=-1;
 	//create socket
@@ -117,7 +109,7 @@ int main(int argc, char *argv[]){
 				write(1, "received: ",10);
 				write(1, buffer, n);
 
-				j=ReceivedMessageDealer(&server,buffer);
+				j=ReceivedMessageDealer(afd,buffer);
 				if(j==1){
 					printf("Invalid msg\n");
 				}
@@ -132,7 +124,7 @@ int main(int argc, char *argv[]){
 
 
 		if(FD_ISSET(0,&rfds)){
-			i=UserInput(fd,res); // NOTA: ACHO QUE NÃO É ESTE fd QUE QUEREMOS <--- CHECKAR
+			i=UserInput(afd,res); // NOTA: ACHO QUE NÃO É ESTE fd QUE QUEREMOS <--- CHECKAR
 			if(i==1){
 				printf("Invalid command\n");
 			}
@@ -168,7 +160,7 @@ int UserInput(int fd, struct addrinfo *res){
 	if(strcmp(option, "new")==0 && flag<1){ //esta flag vai ser incrementada quando se cria o anel para que não se possa criar outro anel por cima 
 
 		if(sscanf(input, " %s %d", option, &i)==2 && i<MAX_KEY){
-				printf("%s selected\n", option);
+				//printf("%s selected\n", option);
 				CreateRing(i);
 				flag++;
 				return 0;
@@ -186,8 +178,8 @@ int UserInput(int fd, struct addrinfo *res){
 	else if(strcmp(option, "sentry")==0){
 
 		if(sscanf(input, " %s %d %d %s %d", option, &i ,&succi, succiIP, &succiPORTO)==5 && i<MAX_KEY){
-				printf("%s selected\n", option);
-				sEntry(fd,i, succi, succiIP, succiPORTO);
+				//printf("%s selected\n", option);
+				sEntry(fd, i, succi, succiIP, succiPORTO);
 				return 0;
 		}
 		return 1;
@@ -222,8 +214,10 @@ int UserInput(int fd, struct addrinfo *res){
 	return 1;
 }
 
-int ReceivedMessageDealer(struct stateInfo* server,char *buffer){
+int ReceivedMessageDealer(int fd,char *buffer){
 	char info[5][20];
+	char *token,*token1,copy[20]; 
+	strcpy(copy,server.succ2IP);
 
 	printf("%s\n", buffer);
 
@@ -248,13 +242,22 @@ int ReceivedMessageDealer(struct stateInfo* server,char *buffer){
 	}
 	else if(strcmp(info[0],"NEW")==0){
 		if(sscanf(buffer,"%s %s %s %s",info[0],info[1],info[2],info[3])==4){
-			printf(" info 0:%s \n info 1:%s \n info 2:%s \n info 3:%s \n",info[0],info[1],info[2],info[3] );
-			server->succ_key = atoi(info[1]);
-			strcpy(server->succIP, info[2]);
-			strcat(server->succIP, ":");
-			strcat(server->succIP, info[3]);
+			printf("NEW: info 0:%s \t info 1:%s \t info 2:%s \t info 3:%s \n",info[0],info[1],info[2],info[3] );
+			server.succ_key = atoi(info[1]);
+			strcpy(server.succIP, info[2]);
+			strcat(server.succIP, ":");
+			strcat(server.succIP, info[3]);
+
+			//este strtok dá bosta pq muda o server.succ2IP
+			/*token=strtok(server.succ2IP,":");
+			token1 = strtok(NULL, ":");*/
+			token=strtok(copy,":");
+			token1 = strtok(NULL, ":");
+			sprintf(buffer,"SUCC %d %s %s",server.succ2_key,token,token1);
 
 			//write do SUCC de volta para o servidor entrante
+			write(fd,buffer,128);
+
 
 			return 0;
 		}
@@ -262,6 +265,11 @@ int ReceivedMessageDealer(struct stateInfo* server,char *buffer){
 	}
 	else if(strcmp(info[0],"SUCC")==0){
 		if(sscanf(buffer,"%s %s %s %s",info[0],info[1],info[2],info[3])==4){
+			printf("SUCC: info 0:%s \t info 1:%s \t info 2:%s \t info 3:%s \n",info[0],info[1],info[2],info[3] );
+			server.succ2_key = atoi(info[1]);
+			strcpy(server.succ2IP, info[2]);
+			strcat(server.succ2IP, ":");
+			strcat(server.succ2IP, info[3]);
 
 			return 0;
 		}
@@ -307,7 +315,6 @@ int CreateRing(int i){
 	strcpy(server.succIP, server.nodeIP);
 	strcpy(server.succ2IP, server.nodeIP);
 
-	printf("Ring created\n");
 	return 0;
 }
 
@@ -331,9 +338,10 @@ void sEntry(int fd, int i, int succi, char *succiIP, int succiPORTO){
 	int n=0;
 	char text[50], PORT[9];
 	struct addrinfo hints, *res;
-	char *token,*token1; 
+	char *token=NULL,*token1=NULL,copy[20]; 
+	strcpy(copy,server.nodeIP);
 
-	printf("%d %d %s %d\n",i,succi, succiIP,succiPORTO );
+	printf("sEntry: nodeIP= %s %d %d %s %d\n",server.nodeIP,i,succi, succiIP,succiPORTO );
 
 	fd=socket(AF_INET,SOCK_STREAM,0);//TCP socket
 	if (fd==-1){printf("couldn't create socket\n"); exit(1);} //error
@@ -349,17 +357,35 @@ void sEntry(int fd, int i, int succi, char *succiIP, int succiPORTO){
 	errno=getaddrinfo(succiIP,PORT,&hints,&res) ;
 	if(errno!=0) /*error*/ exit(1);
 
+	//guarda as info sobre este servidor antes de fazer uma ligação
+	server.node_key = i;
+	server.succ_key = succi;
+	server.succ2_key = i;
+	sprintf(text,"%s:%s",succiIP, PORT);
+	strcpy(server.succIP, text);
+	strcpy(server.succ2IP, server.nodeIP);
+
 	n= connect (fd,res->ai_addr,res->ai_addrlen);
 	if(n==-1)/*error*/exit(1);
 	printf("connected\n");
 
-	token=strtok(server.nodeIP,":");
+	//este strtok antigo dava bosta pq muda o server.nodeIP
+	token=strtok(copy,":");
 	token1 = strtok(NULL, ":");
+	//if(sscanf(server.nodeIP,"%s:%s",token,token1)==2)printf("ERRO\n");
 	sprintf(text,"NEW %d %s %s \n",i, token, token1);
-	printf("text= %s\n",text);
+	printf("text= %s server.nodeIP=%s\n",text, server.nodeIP);
 
+	//envia o NEW
 	n=write (fd,text,strlen(text));
 	if(n==-1)/*error*/exit(1);
+
+	//recebe um SUCC
+	if((n=read(fd,text,50))!=0){
+		printf("SUCC recebido: %s\n",text );
+		ReceivedMessageDealer(fd,text);
+	}
+
 
 	//freeaddrinfo(res);
 	//close (fd);
