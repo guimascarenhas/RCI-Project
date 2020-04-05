@@ -15,7 +15,7 @@
 
 extern int errno;
 stateInfo server;
-int flag_new; // flag_new = 0 if new has not been called and server is not connected
+int flag; // flag = 0 if new has not been called and server is not connected
 int pred_fd, succ_fd;
 int maxfd;
 
@@ -31,7 +31,7 @@ int main(int argc, char *argv[]){
 	fd_set rfds;
 	enum {idle, busy} state;
 
-	flag_new=0;
+	flag=0;
 	pred_fd=-1;	// fd is not in use 
 	succ_fd=-1;
 
@@ -94,7 +94,7 @@ int main(int argc, char *argv[]){
 		counter=select(maxfd+1, &rfds, (fd_set*)NULL, (fd_set*)NULL, (struct timeval *)NULL);
 		if(counter<=0) exit(1);
 
-		if(flag_new == 1 && FD_ISSET(fd,&rfds)){ //aceitar ligações
+		if(flag == 1 && FD_ISSET(fd,&rfds)){ //aceitar ligações
 			addrlen=sizeof(addr);
 			if((newfd=accept(fd, (struct sockaddr*)&addr, &addrlen))==-1) exit(1);
 			switch(state){
@@ -130,7 +130,8 @@ int main(int argc, char *argv[]){
 				printf("Invalid command\n");
 			}
 			else if(i==-1){
-				printf("Closing dkt\n");
+				printf("Closing dkt\n");  // função exit!! ainda não está feito!!
+				exit(1);
 			}
 		}
 
@@ -142,11 +143,26 @@ int main(int argc, char *argv[]){
 				succMessageHandler(buffer);
 				maxfd=max(maxfd, succ_fd);
 			}
+			else{
+				succLeft();
+			}
+
 		}
 
 
 	}
 	exit(0);
+}
+
+void succLeft(){
+	close(succ_fd);
+	succ_fd=createSocket(server.succ2IP, server.succ2TCP);
+	maxfd=max(maxfd, succ_fd);
+	server.succ_key=server.succ2_key;
+	strcpy(server.succIP, server.succ2IP);
+	server.succTCP=server.succ2TCP;
+	sendSUCCCONF(succ_fd);
+	sendSUCC(pred_fd);  
 }
 
 void succMessageHandler(char *buffer){
@@ -166,7 +182,7 @@ void succMessageHandler(char *buffer){
 		sscanf(buffer,"%s %d %s %d", option, &server.succ_key,server.succIP,&server.succTCP);
 		close(succ_fd);
 		succ_fd=createSocket(server.succIP,server.succTCP);
-		sendSUCCONF(succ_fd);
+		sendSUCCCONF(succ_fd);
 		sendSUCC(pred_fd);
 	}
 
@@ -188,7 +204,7 @@ int messageHandler(int afd, char *buffer){
 				pred_fd=afd;
 				succ_fd=createSocket(server.succIP, server.succTCP);
 				maxfd=max(maxfd,succ_fd);
-				sendSUCCONF(succ_fd);
+				sendSUCCCONF(succ_fd);
 				return 1;
 			}
 			else{
@@ -202,8 +218,9 @@ int messageHandler(int afd, char *buffer){
 		}
 			
 	}
-	else if(strcmp(option, "SUCCONF")==0){
+	else if(strcmp(option, "SUCCCONF")==0){
 		pred_fd=afd;
+		sendSUCC(pred_fd);
 		return 1;
 	}
 	return 0;
@@ -222,7 +239,7 @@ void sendSUCC(int fd){
 	ssize_t n;
 	
 	sprintf(text,"SUCC %d %s %d \n", server.succ_key, server.succIP, server.succTCP);
-	printf("text= %s",text);
+	printf("send to pred: %s",text);
 
 	n=write (fd,text,strlen(text));
 	if(n==-1)/*error*/exit(1);
@@ -231,8 +248,8 @@ void sendSUCC(int fd){
 
 
 
-void sendSUCCONF(int fd){
-	char text[9]= "SUCCONF\n";
+void sendSUCCCONF(int fd){
+	char text[9]= "SUCCCONF\n";
 	ssize_t n;
 
 	n=write (fd,text,strlen(text));
@@ -252,14 +269,20 @@ int UserInput(){
 	if(!sscanf(input, " %s", option)) return 1;
 
 
-	if(strcmp(option, "new")==0 && flag_new==0){ 
-
-		if(sscanf(input, " %s %d", option, &i)==2 && i<MAX_KEY && i>0){
+	if(strcmp(option, "new")==0){ 
+		if(flag==0){
+			if(sscanf(input, " %s %d", option, &i)==2 && i<MAX_KEY && i>0){
 				CreateRing(i);
 				return 0;
+			}
+			else return 1;
 		}
 
-		return 1;
+		else{
+			printf("new has already been called\n");
+		}
+
+		return 0;
 	}
 
 	else if(strcmp(option, "entry")==0){
@@ -278,8 +301,7 @@ int UserInput(){
 	}
 
 	else if(strcmp(option, "leave")==0){
-
-		printf("%s selected\n", option);
+		leave();
 		return 0;
 	}
 
@@ -318,7 +340,7 @@ int CreateRing(int i){
 	server.succ2TCP= server.nodeTCP;
 	strcpy(server.succ2IP, server.nodeIP);
 
-	flag_new=1;
+	flag=1;
 
 	return 0;
 }
@@ -351,13 +373,31 @@ void storeInfo(int i, int succi, char *succIP, int succ_port){
 	return;
 }
 
+// closes sockets and exits
+void leave(){
+
+	if(flag == 0){
+		printf("Server is not connected to a ring yet\n");
+		printf("If you want to close use 'exit'\n");
+		return;
+	}
+	if(server.nodeTCP == server.succTCP){
+		exit(1);
+	}
+	else{
+		close(pred_fd);
+		close(succ_fd);
+		exit(1);
+	}
+}
+
 void sentry(int i, int succi, char* succIP, int succ_port){
 
 	int fd;
 	char text[128];
 	ssize_t n;
 
-	flag_new=1;
+	flag=1;
 	
 	fd=createSocket(succIP, succ_port);
 	storeInfo(i, succi, succIP, succ_port);
@@ -376,34 +416,6 @@ void sentry(int i, int succi, char* succIP, int succ_port){
 	return;
 }
 
-
-//envia a mensagem NEW i i.IP i.port para o o filedescripter fd (é usada em 2 contextos diferentes)
-void neww(int fd,int i, char * ip, int port){
-	char text[128];
-	ssize_t n;
-	
-	//prepara o NEW
-	sprintf(text,"NEW %d %s %d \n",i, ip, port);
-	printf("text= %s\n",text);
-
-	//envia o NEW
-	n=write (fd,text,strlen(text));
-	if(n==-1)/*error*/exit(1);
-}
-
-//envia a mensagem SUCC succ succ.IP succ.port para o o filedescripter fd
-void succ(int fd,int succ, char * succ_ip, int succ_port){
-	char text[128];
-	ssize_t n;
-	
-	//prepara o SUCC
-	sprintf(text,"SUCC %d %s %d \n",succ, succ_ip, succ_port);
-	printf("text= %s\n",text);
-
-	//envia o NEW
-	n=write (fd,text,strlen(text));
-	if(n==-1)/*error*/exit(1);
-}
 
 int createSocket(char *ip, int p){
 
