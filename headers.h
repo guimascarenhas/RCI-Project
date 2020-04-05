@@ -17,15 +17,15 @@ int UserInput();
 int ReceivedMessageDealer(int fd,char *buffer,int flag_new);
 int CreateRing(int i);
 void ShowState();
-//void sEntry(int fd,  int i, int succi, char *succiIP, int succiPORTO, int flag_new);
-void neww(int fd,int i, char * ip, int port);
-void succ(int fd,int i, char * ip, int port);
 int createSocket(char *, int p);
 int messageHandler(int afd, char* buffer);
 void succMessageHandler(char *buffer);
 void sentry(int i, int succi, char* succIP, int succ_port);
-void sendSUCCONF(int fd);
+void leave();
+void sendSUCCCONF(int fd);
 void sendSUCC(int fd);
 void sendBuffer(int fd, char *buffer);
+void succLeft();
+
 
 #endif // HEADERS_H_INCLUDED
