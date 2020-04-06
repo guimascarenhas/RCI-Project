@@ -1,8 +1,8 @@
 CC=gcc
-CFLAGS=
+CFLAGS=-Wall
 LIBS= 
-SOURCES = dkt.c headers.c
-OBJECTS = dkt.o headers.o
+SOURCES = dkt.c headers.h
+OBJECTS = dkt.o 
 
 
 dkt: $(OBJECTS)
