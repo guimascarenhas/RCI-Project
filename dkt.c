@@ -10,12 +10,12 @@
 #include "headers.h"
 #define max(A,B) ((A)>=(B)?(A):(B))
 #define AAA printf("aqui\n")
-#define MAX_KEY 100 //=N do enunciado 
+#define MAX_KEY 100
 
 
 extern int errno;
 stateInfo server;
-int flag_new; // flag_new = 0 if new has not been called and server is not connected
+int flag; // flag = 0 if new has not been called and server is not connected
 int pred_fd, succ_fd;
 int maxfd;
 
@@ -31,7 +31,7 @@ int main(int argc, char *argv[]){
 	fd_set rfds;
 	enum {idle, busy} state;
 
-	flag_new=0;
+	flag=0;
 	pred_fd=-1;	// fd is not in use 
 	succ_fd=-1;
 
@@ -94,7 +94,7 @@ int main(int argc, char *argv[]){
 		counter=select(maxfd+1, &rfds, (fd_set*)NULL, (fd_set*)NULL, (struct timeval *)NULL);
 		if(counter<=0) exit(1);
 
-		if(flag_new == 1 && FD_ISSET(fd,&rfds)){ //aceitar ligações
+		if(flag == 1 && FD_ISSET(fd,&rfds)){ //aceitar ligações
 			addrlen=sizeof(addr);
 			if((newfd=accept(fd, (struct sockaddr*)&addr, &addrlen))==-1) exit(1);
 			switch(state){
@@ -123,24 +123,37 @@ int main(int argc, char *argv[]){
 				printf("Client disconnected\n");
 			}
 		}
-
-		if(FD_ISSET(0,&rfds)){
+		else if(FD_ISSET(0,&rfds)){
 			i=UserInput();
 			if(i==1){
 				printf("Invalid command\n");
 			}
 			else if(i==-1){
-				printf("Closing dkt\n");
+				printf("Closing dkt\n");  // função exit!! ainda não está feito!!
+				exit(1);
 			}
 		}
-
-		if(succ_fd>0 && FD_ISSET(succ_fd,&rfds)){
+		else if(succ_fd>0 && FD_ISSET(succ_fd,&rfds)){
+			printf("succ_fd!pred_fd=%d \t succ_fd=%d \t maxfd=%d\n", pred_fd,succ_fd, maxfd);
 			if((n=read(succ_fd,buffer,128))!=0){
 				if(n==-1) exit(1);
 				write(1, "received from succ: ",20);
 				write(1, buffer, n);
 				succMessageHandler(buffer);
 				maxfd=max(maxfd, succ_fd);
+			}
+			else{
+				succLeft();
+			}
+		}
+		else if(pred_fd>0 && FD_ISSET(pred_fd,&rfds)){
+			printf("pred_fd!! pred_fd=%d \t succ_fd=%d \t maxfd=%d\n", pred_fd,succ_fd, maxfd);
+			if((n=read(pred_fd,buffer,128))!=0){
+				if(n==-1) exit(1);
+				write(1, "received from pred: ",20);
+				write(1, buffer, n);
+				predMessageHandler(buffer);
+				maxfd=max(maxfd, pred_fd);
 			}
 		}
 
@@ -162,10 +175,33 @@ int dist(int k, int l){
 	return d;
 }
 
-/*float dN(int k, int l){
-	return ((l-k)/(float)MAX_KEY); // tirei o módulo, pq senão as comparações não fazem sentido
-}*/
 
+void succLeft(){
+	close(succ_fd);
+	succ_fd=createSocket(server.succ2IP, server.succ2TCP);
+	maxfd=max(maxfd, succ_fd);
+	server.succ_key=server.succ2_key;
+	strcpy(server.succIP, server.succ2IP);
+	server.succTCP=server.succ2TCP;
+	sendSUCCCONF(succ_fd);
+	sendSUCC(pred_fd);  
+}
+
+void predMessageHandler(char *buffer){
+	int k=0,i=0,port=0;
+	char option[10],ip[9]="\n";
+
+	if(!sscanf(buffer, " %s", option)) return ;
+
+	if(strcmp(option, "FND")==0){
+		if(sscanf(buffer, "%s %d %d %s %d", option, &k, &i, ip, &port)==5){
+				printf("Received FND\n");
+				find(k,i,ip,port);
+		}
+
+	}
+
+}
 void succMessageHandler(char *buffer){
 
 	char option[10];
@@ -183,17 +219,18 @@ void succMessageHandler(char *buffer){
 		sscanf(buffer,"%s %d %s %d", option, &server.succ_key,server.succIP,&server.succTCP);
 		close(succ_fd);
 		succ_fd=createSocket(server.succIP,server.succTCP);
-		sendSUCCONF(succ_fd);
+		maxfd=max(maxfd,succ_fd);
+		sendSUCCCONF(succ_fd);
 		sendSUCC(pred_fd);
 	}
 
 	return;
-
 }
 
 int messageHandler(int afd, char *buffer){
-
-	char option[10];
+	
+	int k=0,i=0,port=0;
+	char option[10],ip[9]="\n";
 
 
 	if(!sscanf(buffer, " %s", option)) return 1;
@@ -205,7 +242,7 @@ int messageHandler(int afd, char *buffer){
 				pred_fd=afd;
 				succ_fd=createSocket(server.succIP, server.succTCP);
 				maxfd=max(maxfd,succ_fd);
-				sendSUCCONF(succ_fd);
+				sendSUCCCONF(succ_fd);
 				return 1;
 			}
 			else{
@@ -213,19 +250,32 @@ int messageHandler(int afd, char *buffer){
 				sendBuffer(pred_fd, buffer);
 				close(pred_fd);
 				pred_fd=afd;
-				maxfd=max(maxfd, afd);
+				//maxfd=max(maxfd, afd);
 				return 1;
 			}
 		}
 			
 	}
-	else if(strcmp(option, "SUCCONF")==0){
+	else if(strcmp(option, "SUCCCONF")==0){
 		pred_fd=afd;
+		sendSUCC(pred_fd);
 		return 1;
 	}
-	else if(strcmp(option, "FND")==0){
-
+	else if(strcmp(option, "KEY")==0){
+		if(sscanf(buffer, "%s %d %d %s %d", option, &k, &i, ip, &port)==5){
+				printf("Chave %d encontrada: %d %s %d\n",k,i,ip,port); //usei estes nomes para não ter de criar novas variáveis 
+				return 1;
+		}
 	}
+	/*else if(strcmp(option, "FND")==0){
+		if(sscanf(buffer, "%s %d %d %s %d", option, &k, &i, ip, &port)==5){
+				printf("Received FND\n");
+				find(k,i,ip,port);
+				return 1;
+		}
+
+	}*/
+
 	return 0;
 }
 
@@ -242,26 +292,24 @@ void sendSUCC(int fd){
 	ssize_t n;
 	
 	sprintf(text,"SUCC %d %s %d \n", server.succ_key, server.succIP, server.succTCP);
-	printf("text= %s",text);
-
+	
 	n=write (fd,text,strlen(text));
 	if(n==-1)/*error*/exit(1);
-
+	printf("sent to pred: %s",text);
 }
 
-void sendSUCCONF(int fd){
-	char text[9]= "SUCCONF\n";
+void sendSUCCCONF(int fd){
+	char text[9]= "SUCCCONF\n";
 	ssize_t n;
 
 	n=write (fd,text,strlen(text));
 	if(n==-1)/*error*/exit(1);
-
 }
 
 int UserInput(){
 
-	int i=-1, succi=0, succ_port=0 , k=0,port=0;
-	char option[10]="\0", input[128]="\0", succIP[9]="\n",, ip[9]="\n";
+	int i=-1, succi=0, succ_port=0,k=0;
+	char option[10]="\0", input[128]="\0", succIP[9]="\n";
 
 	if(fgets(input, 128, stdin)==NULL){
 		return 1;
@@ -270,14 +318,20 @@ int UserInput(){
 	if(!sscanf(input, " %s", option)) return 1;
 
 
-	if(strcmp(option, "new")==0 && flag_new==0){ 
-
-		if(sscanf(input, " %s %d", option, &i)==2 && i<MAX_KEY && i>0){
+	if(strcmp(option, "new")==0){ 
+		if(flag==0){
+			if(sscanf(input, " %s %d", option, &i)==2 && i<MAX_KEY && i>0){
 				CreateRing(i);
 				return 0;
+			}
+			else return 1;
 		}
 
-		return 1;
+		else{
+			printf("new has already been called\n");
+		}
+
+		return 0;
 	}
 
 	else if(strcmp(option, "entry")==0){
@@ -296,23 +350,21 @@ int UserInput(){
 	}
 
 	else if(strcmp(option, "leave")==0){
-
-		printf("%s selected\n", option);
+		leave();
 		return 0;
 	}
 
 	else if(strcmp(option, "show")==0){
-
 		//printf("%s selected\n", option);
 		ShowState();
 		return 0;
 	}
 
 	else if(strcmp(option, "find")==0){
-
 		printf("%s selected\n", option);
-		if(sscanf(input, " %s %d %d %d %s %d", option, &k, &i, ip, &port)==5 && i<MAX_KEY){
-				find(k,i,ip,port);
+
+		if(sscanf(input, " %s %d", option, &k)==2 && k<MAX_KEY){
+				find(k,server.node_key,server.nodeIP,server.nodeTCP);
 				return 0;
 		}
 		return 1;
@@ -340,7 +392,7 @@ int CreateRing(int i){
 	server.succ2TCP= server.nodeTCP;
 	strcpy(server.succ2IP, server.nodeIP);
 
-	flag_new=1;
+	flag=1;
 
 	return 0;
 }
@@ -373,13 +425,31 @@ void storeInfo(int i, int succi, char *succIP, int succ_port){
 	return;
 }
 
+// closes sockets and exits
+void leave(){
+
+	if(flag == 0){
+		printf("Server is not connected to a ring yet\n");
+		printf("If you want to close use 'exit'\n");
+		return;
+	}
+	if(server.nodeTCP == server.succTCP){
+		exit(1);
+	}
+	else{
+		close(pred_fd);
+		close(succ_fd);
+		exit(1);
+	}
+}
+
 void sentry(int i, int succi, char* succIP, int succ_port){
 
 	int fd;
 	char text[128];
 	ssize_t n;
 
-	flag_new=1;
+	flag=1;
 	
 	fd=createSocket(succIP, succ_port);
 	storeInfo(i, succi, succIP, succ_port);
@@ -398,34 +468,6 @@ void sentry(int i, int succi, char* succIP, int succ_port){
 	return;
 }
 
-
-//envia a mensagem NEW i i.IP i.port para o filedescripter fd (é usada em 2 contextos diferentes)
-void neww(int fd,int i, char * ip, int port){
-	char text[128];
-	ssize_t n;
-	
-	//prepara o NEW
-	sprintf(text,"NEW %d %s %d \n",i, ip, port);
-	printf("text= %s\n",text);
-
-	//envia o NEW
-	n=write (fd,text,strlen(text));
-	if(n==-1)/*error*/exit(1);
-}
-
-//envia a mensagem SUCC succ succ.IP succ.port para o filedescripter fd
-void succ(int fd,int succ, char * succ_ip, int succ_port){
-	char text[128];
-	ssize_t n;
-	
-	//prepara o SUCC
-	sprintf(text,"SUCC %d %s %d \n",succ, succ_ip, succ_port);
-	printf("text= %s\n",text);
-
-	//envia o NEW
-	n=write (fd,text,strlen(text));
-	if(n==-1)/*error*/exit(1);
-}
 
 int createSocket(char *ip, int p){
 
@@ -454,7 +496,43 @@ int createSocket(char *ip, int p){
 	return fd;
 }
 
+
 void find(int k,int i,char *ip,int port){
+	char text[128]="\n";
+	int fd=0;
+	ssize_t n;
+	printf("find : %d %d %s %d\n",k,i,ip,port);
 
+	if(dist(k,server.succ_key)> dist(k,server.node_key)){//não é ele que tem a chave
+		printf("chave não é minha\n");
+		sprintf(text,"FND %d %d %s %d\n",k,i,ip,port);
+		
+		//então envia para o seu sucessor o FND para procurar
+		n=write(succ_fd,text,strlen(text));
+		if(n==-1)/*error*/exit(1);
+		printf("Enviei para o succ\n");
+		return;
+	}
+	else if(dist(k,server.succ_key)<dist(k,server.node_key) && i==server.succ_key){
+		printf("Chave encontrada: é do original!\n");
 
+		sprintf(text,"KEY %d %d %s %d\n",k,server.succ_key,server.succIP,server.succTCP);
+		
+		n=write(fd,text,strlen(text));
+		if(n==-1)/*error*/exit(1);
+
+		return;
+	}
+	else{
+		fd=createSocket(ip, port);
+		maxfd=max(maxfd,fd);
+		printf("Encontrei a chave\n");
+		sprintf(text,"KEY %d %d %s %d\n",k,server.succ_key,server.succIP,server.succTCP);
+		
+		n=write(fd,text,strlen(text));
+		if(n==-1)/*error*/exit(1);
+		printf("enviei para i\n");
+		close(fd);
+		return;
+	}
 }
