@@ -504,7 +504,7 @@ void find(int k,int i,char *ip,int port){
 	printf("find : %d %d %s %d\n",k,i,ip,port);
 
 	if(dist(k,server.succ_key)> dist(k,server.node_key)){//não é ele que tem a chave
-		printf("chave não é minha\n");
+		printf("chave não é do meu succ\n");
 		sprintf(text,"FND %d %d %s %d\n",k,i,ip,port);
 		
 		//então envia para o seu sucessor o FND para procurar
@@ -513,26 +513,27 @@ void find(int k,int i,char *ip,int port){
 		printf("Enviei para o succ\n");
 		return;
 	}
-	else if(dist(k,server.succ_key)<dist(k,server.node_key) && i==server.succ_key){
-		printf("Chave encontrada: é do original!\n");
-
-		sprintf(text,"KEY %d %d %s %d\n",k,server.succ_key,server.succIP,server.succTCP);
-		
-		n=write(fd,text,strlen(text));
-		if(n==-1)/*error*/exit(1);
-
-		return;
-	}
+	//else if(dist(k,server.succ_key)<dist(k,server.node_key) && i==server.succ_key)
 	else{
-		fd=createSocket(ip, port);
-		maxfd=max(maxfd,fd);
-		printf("Encontrei a chave\n");
+		//prepara o buffer para enviar
 		sprintf(text,"KEY %d %d %s %d\n",k,server.succ_key,server.succIP,server.succTCP);
-		
-		n=write(fd,text,strlen(text));
-		if(n==-1)/*error*/exit(1);
-		printf("enviei para i\n");
-		close(fd);
+
+		if(i==server.succ_key){
+			printf("Chave encontrada: é do original!\n");
+
+			n=write(succ_fd,text,strlen(text));
+			if(n==-1)/*error*/exit(1);
+		}
+		else{
+			fd=createSocket(ip, port);
+			maxfd=max(maxfd,fd);
+			printf("Encontrei a chave\n");
+			
+			n=write(fd,text,strlen(text));
+			if(n==-1)/*error*/exit(1);
+			printf("enviei para i\n");
+			close(fd);
+		}
 		return;
 	}
 }
