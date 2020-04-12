@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=
+CFLAGS=-Wall
 LIBS= 
 SOURCES = dkt.c headers.h
 OBJECTS = dkt.o 
