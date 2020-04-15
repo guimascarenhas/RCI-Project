@@ -27,7 +27,7 @@ int main(int argc, char *argv[]){
 	socklen_t addrlen;
 	struct addrinfo hints, *res;
 	struct sockaddr_in addr;
-	char buffer[128], info[5][20];
+	char buffer[128];
 	fd_set rfds;
 	enum {idle, busy} state;
 
@@ -123,8 +123,7 @@ int main(int argc, char *argv[]){
 				printf("Client disconnected\n");
 			}
 		}
-
-		if(FD_ISSET(0,&rfds)){
+		else if(FD_ISSET(0,&rfds)){
 			i=UserInput();
 			if(i==1){
 				printf("Invalid command\n");
@@ -134,8 +133,8 @@ int main(int argc, char *argv[]){
 				exit(1);
 			}
 		}
-
-		if(succ_fd>0 && FD_ISSET(succ_fd,&rfds)){
+		else if(succ_fd>0 && FD_ISSET(succ_fd,&rfds)){
+			printf("succ_fd!pred_fd=%d \t succ_fd=%d \t maxfd=%d\n", pred_fd,succ_fd, maxfd);
 			if((n=read(succ_fd,buffer,128))!=0){
 				if(n==-1) exit(1);
 				write(1, "received from succ: ",20);
@@ -146,13 +145,36 @@ int main(int argc, char *argv[]){
 			else{
 				succLeft();
 			}
-
+		}
+		else if(pred_fd>0 && FD_ISSET(pred_fd,&rfds)){
+			printf("pred_fd!! pred_fd=%d \t succ_fd=%d \t maxfd=%d\n", pred_fd,succ_fd, maxfd);
+			if((n=read(pred_fd,buffer,128))!=0){
+				if(n==-1) exit(1);
+				write(1, "received from pred: ",20);
+				write(1, buffer, n);
+				predMessageHandler(buffer);
+				maxfd=max(maxfd, pred_fd);
+			}
 		}
 
 
 	}
 	exit(0);
 }
+
+int dist(int k, int l){
+	int d=0;
+
+	if(k>l){
+		d= MAX_KEY-(k-l);
+	}
+	else{
+		d=l-k;
+	}
+
+	return d;
+}
+
 
 void succLeft(){
 	close(succ_fd);
@@ -165,6 +187,21 @@ void succLeft(){
 	sendSUCC(pred_fd);  
 }
 
+void predMessageHandler(char *buffer){
+	int k=0,i=0,port=0;
+	char option[10],ip[9]="\n";
+
+	if(!sscanf(buffer, " %s", option)) return ;
+
+	if(strcmp(option, "FND")==0){
+		if(sscanf(buffer, "%s %d %d %s %d", option, &k, &i, ip, &port)==5){
+				printf("Received FND\n");
+				find(k,i,ip,port);
+		}
+
+	}
+
+}
 void succMessageHandler(char *buffer){
 
 	char option[10];
@@ -182,17 +219,18 @@ void succMessageHandler(char *buffer){
 		sscanf(buffer,"%s %d %s %d", option, &server.succ_key,server.succIP,&server.succTCP);
 		close(succ_fd);
 		succ_fd=createSocket(server.succIP,server.succTCP);
+		maxfd=max(maxfd,succ_fd);
 		sendSUCCCONF(succ_fd);
 		sendSUCC(pred_fd);
 	}
 
 	return;
-
 }
 
 int messageHandler(int afd, char *buffer){
-
-	char option[10];
+	
+	int k=0,i=0,port=0;
+	char option[10],ip[9]="\n";
 
 
 	if(!sscanf(buffer, " %s", option)) return 1;
@@ -212,7 +250,7 @@ int messageHandler(int afd, char *buffer){
 				sendBuffer(pred_fd, buffer);
 				close(pred_fd);
 				pred_fd=afd;
-				maxfd=max(maxfd, afd);
+				//maxfd=max(maxfd, afd);
 				return 1;
 			}
 		}
@@ -223,6 +261,21 @@ int messageHandler(int afd, char *buffer){
 		sendSUCC(pred_fd);
 		return 1;
 	}
+	else if(strcmp(option, "KEY")==0){
+		if(sscanf(buffer, "%s %d %d %s %d", option, &k, &i, ip, &port)==5){
+				printf("Chave %d encontrada: %d %s %d\n",k,i,ip,port); //usei estes nomes para não ter de criar novas variáveis 
+				return 1;
+		}
+	}
+	/*else if(strcmp(option, "FND")==0){
+		if(sscanf(buffer, "%s %d %d %s %d", option, &k, &i, ip, &port)==5){
+				printf("Received FND\n");
+				find(k,i,ip,port);
+				return 1;
+		}
+
+	}*/
+
 	return 0;
 }
 
@@ -239,14 +292,11 @@ void sendSUCC(int fd){
 	ssize_t n;
 	
 	sprintf(text,"SUCC %d %s %d \n", server.succ_key, server.succIP, server.succTCP);
-	printf("send to pred: %s",text);
-
+	
 	n=write (fd,text,strlen(text));
 	if(n==-1)/*error*/exit(1);
-
+	printf("sent to pred: %s",text);
 }
-
-
 
 void sendSUCCCONF(int fd){
 	char text[9]= "SUCCCONF\n";
@@ -254,12 +304,11 @@ void sendSUCCCONF(int fd){
 
 	n=write (fd,text,strlen(text));
 	if(n==-1)/*error*/exit(1);
-
 }
 
 int UserInput(){
 
-	int i=-1, succi=0, succ_port=0;
+	int i=-1, succi=0, succ_port=0,k=0;
 	char option[10]="\0", input[128]="\0", succIP[9]="\n";
 
 	if(fgets(input, 128, stdin)==NULL){
@@ -306,16 +355,19 @@ int UserInput(){
 	}
 
 	else if(strcmp(option, "show")==0){
-
 		//printf("%s selected\n", option);
 		ShowState();
 		return 0;
 	}
 
 	else if(strcmp(option, "find")==0){
-
 		printf("%s selected\n", option);
-		return 0;
+
+		if(sscanf(input, " %s %d", option, &k)==2 && k<MAX_KEY){
+				find(k,server.node_key,server.nodeIP,server.nodeTCP);
+				return 0;
+		}
+		return 1;
 	}
 
 	else if(strcmp(option, "exit")==0){
@@ -442,4 +494,46 @@ int createSocket(char *ip, int p){
 
 	free(res);
 	return fd;
+}
+
+
+void find(int k,int i,char *ip,int port){
+	char text[128]="\n";
+	int fd=0;
+	ssize_t n;
+	printf("find : %d %d %s %d\n",k,i,ip,port);
+
+	if(dist(k,server.succ_key)> dist(k,server.node_key)){//não é ele que tem a chave
+		printf("chave não é do meu succ\n");
+		sprintf(text,"FND %d %d %s %d\n",k,i,ip,port);
+		
+		//então envia para o seu sucessor o FND para procurar
+		n=write(succ_fd,text,strlen(text));
+		if(n==-1)/*error*/exit(1);
+		printf("Enviei para o succ\n");
+		return;
+	}
+	//else if(dist(k,server.succ_key)<dist(k,server.node_key) && i==server.succ_key)
+	else{
+		//prepara o buffer para enviar
+		sprintf(text,"KEY %d %d %s %d\n",k,server.succ_key,server.succIP,server.succTCP);
+
+		if(i==server.succ_key){
+			printf("Chave encontrada: é do original!\n");
+
+			n=write(succ_fd,text,strlen(text));
+			if(n==-1)/*error*/exit(1);
+		}
+		else{
+			fd=createSocket(ip, port);
+			maxfd=max(maxfd,fd);
+			printf("Encontrei a chave\n");
+			
+			n=write(fd,text,strlen(text));
+			if(n==-1)/*error*/exit(1);
+			printf("enviei para i\n");
+			close(fd);
+		}
+		return;
+	}
 }
