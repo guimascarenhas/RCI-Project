@@ -16,13 +16,13 @@
 extern int errno;
 stateInfo server;
 int flag; // flag = 0 if new has not been called and server is not connected
-int pred_fd, succ_fd;
+int pred_fd, succ_fd, udp_fd;
 int maxfd;
 
 
 int main(int argc, char *argv[]){
 
-	int fd, newfd, afd=0, counter,i=0;
+	int fd, newfd, afd=0, counter,i=0,u_fd;
 	ssize_t n;
 	socklen_t addrlen;
 	struct addrinfo hints, *res;
@@ -34,6 +34,7 @@ int main(int argc, char *argv[]){
 	flag=0;
 	pred_fd=-1;	// fd is not in use 
 	succ_fd=-1;
+	udp_fd=-1;
 
 	if(argc < 3){
 		printf("Missing arguments when calling dkt\n");
@@ -77,6 +78,8 @@ int main(int argc, char *argv[]){
 	}
 	printf("listening\n");
 
+	u_fd=createSocketUDP_server(server.nodeTCP); //para poder ficar à escuta de sesões UDP
+
 	state = idle;
 	maxfd=fd;
 
@@ -86,6 +89,8 @@ int main(int argc, char *argv[]){
 		FD_SET(fd,&rfds);	
 		if(pred_fd>0) FD_SET(pred_fd,&rfds);
 		if(succ_fd>0) FD_SET(succ_fd,&rfds);
+		//if(udp_fd>0) 
+			FD_SET(udp_fd,&rfds);
 	
 		if(state==busy)	{
 			FD_SET(afd,&rfds);
@@ -128,9 +133,11 @@ int main(int argc, char *argv[]){
 			if(i==1){
 				printf("Invalid command\n");
 			}
-			else if(i==-1){
-				printf("Closing dkt\n");  // função exit!! ainda não está feito!!
-				exit(1);
+			else if(i==-1){ //exit
+				sendBuffer(pred_fd,"EXIT\n");
+				leave();
+				//printf("Closing dkt\n"); 
+				//exit(1);
 			}
 		}
 		else if(succ_fd>0 && FD_ISSET(succ_fd,&rfds)){
@@ -156,6 +163,9 @@ int main(int argc, char *argv[]){
 				maxfd=max(maxfd, pred_fd);
 			}
 		}
+		else if(udp_fd>0 && FD_ISSET(udp_fd,&rfds)){
+
+		}
 
 
 	}
@@ -174,7 +184,6 @@ int dist(int k, int l){
 
 	return d;
 }
-
 
 void succLeft(){
 	close(succ_fd);
@@ -200,8 +209,8 @@ void predMessageHandler(char *buffer){
 		}
 
 	}
-
 }
+
 void succMessageHandler(char *buffer){
 
 	char option[10];
@@ -222,6 +231,16 @@ void succMessageHandler(char *buffer){
 		maxfd=max(maxfd,succ_fd);
 		sendSUCCCONF(succ_fd);
 		sendSUCC(pred_fd);
+	}
+	else if(strcmp(option, "EXIT")==0){
+		printf("entrei EXIT\n");
+		ShowState();
+		if(server.nodeTCP != server.succTCP){ // enquanto há mais do que 1 servidor no anel
+			sendBuffer(pred_fd,"EXIT\n");
+		}
+		leave();
+		//printf("Closing dkt\n"); 
+		//exit(1);
 	}
 
 	return;
@@ -267,20 +286,11 @@ int messageHandler(int afd, char *buffer){
 				return 1;
 		}
 	}
-	/*else if(strcmp(option, "FND")==0){
-		if(sscanf(buffer, "%s %d %d %s %d", option, &k, &i, ip, &port)==5){
-				printf("Received FND\n");
-				find(k,i,ip,port);
-				return 1;
-		}
-
-	}*/
 
 	return 0;
 }
 
 void sendBuffer(int fd, char *buffer){
-
 	ssize_t n;
 
 	n=write(fd, buffer, strlen(buffer));
@@ -307,9 +317,9 @@ void sendSUCCCONF(int fd){
 }
 
 int UserInput(){
-
-	int i=-1, succi=0, succ_port=0,k=0;
-	char option[10]="\0", input[128]="\0", succIP[9]="\n";
+ 
+	int i=-1, succi=0, succ_port=0,k=0, boot=0,boot_port=0; //para ficar mais legível criei as variáveis "boot", apesar de poder usar as que já existiam com nomes menos intuitivos
+	char option[10]="\0", input[128]="\0", succIP[9]="\n",bootIP[9]="\n";
 
 	if(fgets(input, 128, stdin)==NULL){
 		return 1;
@@ -334,10 +344,14 @@ int UserInput(){
 		return 0;
 	}
 
-	else if(strcmp(option, "entry")==0){
-
+	else if(strcmp(option, "entry")==0){		
 		printf("%s selected\n", option);
-		return 0;
+
+		if(sscanf(input, " %s %d %d %s %d", option,&i,&boot,bootIP,&boot_port )==5 && i<MAX_KEY && boot<MAX_KEY){ 
+				entry(i,boot,bootIP,boot_port);
+				return 0;
+		}
+		return 1;
 	}
 
 	else if(strcmp(option, "sentry")==0){
@@ -355,14 +369,11 @@ int UserInput(){
 	}
 
 	else if(strcmp(option, "show")==0){
-		//printf("%s selected\n", option);
 		ShowState();
 		return 0;
 	}
 
 	else if(strcmp(option, "find")==0){
-		printf("%s selected\n", option);
-
 		if(sscanf(input, " %s %d", option, &k)==2 && k<MAX_KEY){
 				find(k,server.node_key,server.nodeIP,server.nodeTCP);
 				return 0;
@@ -371,8 +382,6 @@ int UserInput(){
 	}
 
 	else if(strcmp(option, "exit")==0){
-
-		printf("%s selected\n", option);
 		return -1;
 	}
 
@@ -434,11 +443,13 @@ void leave(){
 		return;
 	}
 	if(server.nodeTCP == server.succTCP){
+		printf("I am lonely, bye\n");
 		exit(1);
 	}
 	else{
 		close(pred_fd);
 		close(succ_fd);
+		printf("bye\n");
 		exit(1);
 	}
 }
@@ -496,6 +507,57 @@ int createSocket(char *ip, int p){
 	return fd;
 }
 
+int createSocketUDP_client(int p){
+
+	struct addrinfo hints, *res;
+	char port[9],buffer1[128];
+
+	int fd=socket(AF_INET,SOCK_DGRAM,0);//TCP socket
+	if (fd==-1){printf("couldn't create socket\n"); exit(1);} //error
+
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family=AF_INET;
+	hints.ai_socktype=SOCK_DGRAM;
+
+	if(gethostname(buffer1,128)==-1) fprintf(stderr,"error: %s\n", strerror(errno));
+
+	//transforma o porto p numa string para usar no getadrinfo
+	sprintf(port,"%d",p);
+
+	errno=getaddrinfo(buffer1,port,&hints,&res) ;
+	if(errno!=0) /*error*/ exit(1);
+
+	free(res);
+	return fd;
+}
+
+int createSocketUDP_server(int p){
+
+	int fd;
+	ssize_t n;
+	struct addrinfo hints,*res;
+	char port[9];
+
+	fd=socket(AF_INET,SOCK_DGRAM,0); //UDP socket
+	if(fd==-1) /*error*/exit(1);
+	
+	memset(&hints,0,sizeof(hints));
+	hints.ai_family=AF_INET; // IPv4
+	hints.ai_socktype=SOCK_DGRAM; // UDP socket
+	hints.ai_flags=AI_PASSIVE;
+
+	sprintf(port,"%d",p);
+
+	errno= getaddrinfo (NULL,port,&hints,&res);
+	if(errno!=0) /*error*/ exit(1);
+
+	n= bind (fd,res->ai_addr, res->ai_addrlen);
+	if(n==-1) /*error*/ exit(1);
+	printf("binded!\n");
+	
+	free(res);
+	return fd;
+}
 
 void find(int k,int i,char *ip,int port){
 	char text[128]="\n";
@@ -536,4 +598,10 @@ void find(int k,int i,char *ip,int port){
 		}
 		return;
 	}
+}
+
+void entry(int i, int boot, char* bootIP, int boot_port){
+
+	udp_fd=createSocketUDP_client(boot_port);
+
 }

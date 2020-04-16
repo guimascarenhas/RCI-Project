@@ -29,6 +29,8 @@ void sendSUCC(int fd);
 void sendBuffer(int fd, char *buffer);
 void succLeft();
 void find(int k,int i,char *ip,int port);
-
+void entry(int i, int boot, char* bootIP, int boot_port);
+int createSocketUDP_client(int p);
+int createSocketUDP_server(int p);
 
 #endif // HEADERS_H_INCLUDED
