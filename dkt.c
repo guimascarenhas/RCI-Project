@@ -108,7 +108,6 @@ int main(int argc, char *argv[]){
 			switch(state){
 				case idle:	afd=newfd;
 							state=busy;
-							printf("Client connected\n");
 							break;
 
 				case busy:	write(newfd, "Busy\n", 5);
@@ -128,7 +127,6 @@ int main(int argc, char *argv[]){
 			else{
 				close(afd);
 				state = idle;
-				printf("Client disconnected\n");
 			}
 		}
 		else if(FD_ISSET(0,&rfds)){
@@ -356,7 +354,6 @@ void sendSUCC(int fd){
 	
 	n=write (fd,text,strlen(text));
 	if(n==-1)/*error*/exit(1);
-	printf("sent to pred: %s",text);
 }
 
 void sendSUCCCONF(int fd){
@@ -394,8 +391,7 @@ int UserInput(){
 		return 0;
 	}
 
-	else if(strcmp(option, "entry")==0){		
-		printf("%s selected\n", option);
+	else if(strcmp(option, "entry")==0){
 
 		if(sscanf(input, " %s %d %d %s %d", option,&i,&boot,bootIP,&boot_port )==5 && i<MAX_KEY && boot<MAX_KEY){ 
 				entry(i,boot,bootIP,boot_port);
@@ -549,7 +545,6 @@ int createSocket(char *ip, int p){
 
 	n=connect (fd,res->ai_addr,res->ai_addrlen);
 	if(n==-1)/*error*/exit(1);
-	printf("connected\n");
 
 	free(res);
 	return fd;
@@ -577,7 +572,6 @@ int createSocketUDP_server(int p){
 
 	n= bind (fd,res->ai_addr, res->ai_addrlen);
 	if(n==-1) /*error*/ exit(1);
-	printf("binded!\n");
 	
 	free(res);
 	return fd;
