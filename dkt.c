@@ -16,17 +16,19 @@
 extern int errno;
 stateInfo server;
 int flag; // flag = 0 if new has not been called and server is not connected
-int pred_fd, succ_fd, udp_fd;
-int maxfd;
+int pred_fd, succ_fd, udp_fd,u_fd;
+int maxfd, ekey;
+socklen_t addrlen_udp;
+struct sockaddr_in addr_udp;
 
 
 int main(int argc, char *argv[]){
 
-	int fd, newfd, afd=0, counter,i=0,u_fd;
-	ssize_t n;
-	socklen_t addrlen;
+	int fd, newfd, afd=0, counter,i=0;
+	ssize_t n,nread;
+	socklen_t addrlen; //, addrlen_udp;
 	struct addrinfo hints, *res;
-	struct sockaddr_in addr;
+	struct sockaddr_in addr;//, addr_udp;
 	char buffer[128];
 	fd_set rfds;
 	enum {idle, busy} state;
@@ -35,6 +37,8 @@ int main(int argc, char *argv[]){
 	pred_fd=-1;	// fd is not in use 
 	succ_fd=-1;
 	udp_fd=-1;
+	u_fd=-1;
+	ekey=0; // flag que controla quando se recebe um KEY se é para a entrada de um servidor ou se é só para o find
 
 	if(argc < 3){
 		printf("Missing arguments when calling dkt\n");
@@ -52,7 +56,6 @@ int main(int argc, char *argv[]){
 		printf("Could not create socket\n");
 		exit(1);
 	}
-
 
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family=AF_INET;
@@ -82,6 +85,7 @@ int main(int argc, char *argv[]){
 
 	state = idle;
 	maxfd=fd;
+	maxfd=max(maxfd,u_fd);
 
 	while(1){
 		FD_ZERO(&rfds);
@@ -89,8 +93,7 @@ int main(int argc, char *argv[]){
 		FD_SET(fd,&rfds);	
 		if(pred_fd>0) FD_SET(pred_fd,&rfds);
 		if(succ_fd>0) FD_SET(succ_fd,&rfds);
-		//if(udp_fd>0) 
-			FD_SET(udp_fd,&rfds);
+		if(u_fd>0) FD_SET(u_fd,&rfds);
 	
 		if(state==busy)	{
 			FD_SET(afd,&rfds);
@@ -133,11 +136,10 @@ int main(int argc, char *argv[]){
 			if(i==1){
 				printf("Invalid command\n");
 			}
-			else if(i==-1){ //exit
-				sendBuffer(pred_fd,"EXIT\n");
-				leave();
-				//printf("Closing dkt\n"); 
-				//exit(1);
+			else if(i==-1){ 
+				leave(); //closes sockets
+				printf("Closing dkt\n"); 
+				exit(1); //and exits
 			}
 		}
 		else if(succ_fd>0 && FD_ISSET(succ_fd,&rfds)){
@@ -163,7 +165,19 @@ int main(int argc, char *argv[]){
 				maxfd=max(maxfd, pred_fd);
 			}
 		}
-		else if(udp_fd>0 && FD_ISSET(udp_fd,&rfds)){
+		else if(u_fd>0 && FD_ISSET(u_fd,&rfds)){
+			printf("u_fd !!\n");
+
+			addrlen_udp=sizeof(addr_udp); 
+			nread= recvfrom (u_fd,buffer,128,0,(struct sockaddr*)&addr_udp,&addrlen_udp);
+			if(nread==-1)/*error*/exit(1);
+			write(1,"received from udp: ",19);
+			write(1,buffer,nread);
+
+			/*n= sendto (u_fd,buffer,nread,0,(struct sockaddr*)&addr_udp,addrlen_udp);
+			if(n==-1) exit(1);*/
+			
+			UDPMessageHandler(buffer);
 
 		}
 
@@ -196,9 +210,39 @@ void succLeft(){
 	sendSUCC(pred_fd);  
 }
 
-void predMessageHandler(char *buffer){
+void UDPMessageHandler(char *buffer){
 	int k=0,i=0,port=0;
 	char option[10],ip[9]="\n";
+
+	if(!sscanf(buffer, " %s", option)) return ;
+
+	if(strcmp(option, "EFND")==0){
+		if(sscanf(buffer, "%s %d", option,&i)==2){
+				printf("Received EFND\n");
+				ekey=1;
+				find(i,server.node_key,server.nodeIP,server.nodeTCP);
+		}
+
+	}
+	else if(strcmp(option, "EKEY")==0){
+		printf("recebi \n");
+		if(sscanf(buffer, "%s %d %d %s %d", option, &k, &i, ip, &port)==5){
+				printf("Received EKEY\n");
+				if(k==i){
+					printf("servidor já existe no anel\n");
+				}
+				else{
+					sentry(k,i,ip,port);
+				}
+		}
+
+	}
+}
+
+void predMessageHandler(char *buffer){
+	int k=0,i=0,port=0;
+	char option[10],ip[9]="\n", text[128]="\n";
+	ssize_t n;
 
 	if(!sscanf(buffer, " %s", option)) return ;
 
@@ -208,6 +252,27 @@ void predMessageHandler(char *buffer){
 				find(k,i,ip,port);
 		}
 
+	}
+	else if(strcmp(option, "KEY")==0){ //no caso de a chave ser do original,recebe-se a mensagem KEY do predecessor em vez de se criar uma nova sessão TCP
+		if(sscanf(buffer, "%s %d %d %s %d", option, &k, &i, ip, &port)==5){
+				printf("Chave %d encontrada: %d %s %d\n",k,i,ip,port); //usei estes nomes para não ter de criar novas variáveis 
+
+				if(ekey==1){// ou seja, se a procura foi feita para a entrada de um novo servidor, então vou enviar a info para ele
+
+					sprintf(text,"EKEY %d %d %s %d\n",k,i,ip, port);
+
+					//addrlen_udp=sizeof(addr_udp);
+
+					n=sendto(u_fd,text,strlen(text),0,(struct sockaddr*)&addr_udp,addrlen_udp);
+					if(n==-1){printf("erro a enviar\n"); exit(1);}
+
+					printf("ENVIOU O EKEY\n");
+
+					ekey=0; //reset da flag, já foi feita a pesquisa para a entrada do novo servidor
+
+				}
+				return ;
+		}
 	}
 }
 
@@ -232,7 +297,7 @@ void succMessageHandler(char *buffer){
 		sendSUCCCONF(succ_fd);
 		sendSUCC(pred_fd);
 	}
-	else if(strcmp(option, "EXIT")==0){
+	/*else if(strcmp(option, "EXIT")==0){
 		printf("entrei EXIT\n");
 		ShowState();
 		if(server.nodeTCP != server.succTCP){ // enquanto há mais do que 1 servidor no anel
@@ -241,7 +306,7 @@ void succMessageHandler(char *buffer){
 		leave();
 		//printf("Closing dkt\n"); 
 		//exit(1);
-	}
+	}*/
 
 	return;
 }
@@ -249,7 +314,8 @@ void succMessageHandler(char *buffer){
 int messageHandler(int afd, char *buffer){
 	
 	int k=0,i=0,port=0;
-	char option[10],ip[9]="\n";
+	char option[10],ip[9]="\n", text[128]="\n";
+	ssize_t n;
 
 
 	if(!sscanf(buffer, " %s", option)) return 1;
@@ -273,7 +339,6 @@ int messageHandler(int afd, char *buffer){
 				return 1;
 			}
 		}
-			
 	}
 	else if(strcmp(option, "SUCCCONF")==0){
 		pred_fd=afd;
@@ -283,6 +348,20 @@ int messageHandler(int afd, char *buffer){
 	else if(strcmp(option, "KEY")==0){
 		if(sscanf(buffer, "%s %d %d %s %d", option, &k, &i, ip, &port)==5){
 				printf("Chave %d encontrada: %d %s %d\n",k,i,ip,port); //usei estes nomes para não ter de criar novas variáveis 
+
+				if(ekey==1){// ou seja, se a procura foi feita para a entrada de um novo servidor, então vou enviar a info para ele
+
+					sprintf(text,"EKEY %d %d %s %d\n",k,i,ip, port);
+
+					//addrlen_udp=sizeof(addr_udp);
+
+					n= sendto (u_fd,text,strlen(text),0,(struct sockaddr*)&addr_udp,addrlen_udp);
+					if(n==-1){printf("erro a enviar\n"); exit(1);}
+					printf("ENVIOU EKEY\n");
+
+					ekey=0; //reset da flag, já foi feita a pesquisa para a entrada do novo servidor
+
+				}
 				return 1;
 		}
 	}
@@ -336,7 +415,6 @@ int UserInput(){
 			}
 			else return 1;
 		}
-
 		else{
 			printf("new has already been called\n");
 		}
@@ -434,7 +512,7 @@ void storeInfo(int i, int succi, char *succIP, int succ_port){
 	return;
 }
 
-// closes sockets and exits
+// closes sockets and mantains the app open
 void leave(){
 
 	if(flag == 0){
@@ -443,14 +521,14 @@ void leave(){
 		return;
 	}
 	if(server.nodeTCP == server.succTCP){
-		printf("I am lonely, bye\n");
-		exit(1);
+		//printf("I am lonely, bye\n");
+		//exit(1);
 	}
 	else{
 		close(pred_fd);
 		close(succ_fd);
 		printf("bye\n");
-		exit(1);
+		//exit(1);
 	}
 }
 
@@ -479,7 +557,6 @@ void sentry(int i, int succi, char* succIP, int succ_port){
 	return;
 }
 
-
 int createSocket(char *ip, int p){
 
 	struct addrinfo hints, *res;
@@ -507,12 +584,12 @@ int createSocket(char *ip, int p){
 	return fd;
 }
 
-int createSocketUDP_client(int p){
+int createSocketUDP_client(int p, struct addrinfo * res){
 
-	struct addrinfo hints, *res;
+	struct addrinfo hints; //, *res;
 	char port[9],buffer1[128];
 
-	int fd=socket(AF_INET,SOCK_DGRAM,0);//TCP socket
+	int fd=socket(AF_INET,SOCK_DGRAM,0);//UDP socket
 	if (fd==-1){printf("couldn't create socket\n"); exit(1);} //error
 
 	memset(&hints, 0, sizeof(hints));
@@ -527,7 +604,7 @@ int createSocketUDP_client(int p){
 	errno=getaddrinfo(buffer1,port,&hints,&res) ;
 	if(errno!=0) /*error*/ exit(1);
 
-	free(res);
+	//free(res);
 	return fd;
 }
 
@@ -602,6 +679,57 @@ void find(int k,int i,char *ip,int port){
 
 void entry(int i, int boot, char* bootIP, int boot_port){
 
-	udp_fd=createSocketUDP_client(boot_port);
+	ssize_t n;
+	socklen_t addrlen;
+	struct addrinfo hints,*res;
+	struct sockaddr_in addr;
+	char buffer[128], text[128],option[9]="\n",ip[9]="\n";
+	int k=0,porto=0;
 
+	//udp_fd=createSocketUDP_client(boot_port,res);
+	char port[9],buffer1[128];
+
+	udp_fd=socket(AF_INET,SOCK_DGRAM,0);//UDP socket
+	if (udp_fd==-1){printf("couldn't create socket\n"); exit(1);} //error
+
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family=AF_INET;
+	hints.ai_socktype=SOCK_DGRAM;
+
+	if(gethostname(buffer1,128)==-1) fprintf(stderr,"error: %s\n", strerror(errno));
+
+	//transforma o porto p numa string para usar no getadrinfo
+	sprintf(port,"%d",boot_port);
+
+	errno=getaddrinfo(bootIP,port,&hints,&res) ;
+	if(errno!=0) /*error*/ exit(1);
+
+	printf("socket client created\n");
+
+	sprintf(text,"EFND %d\n",i);
+
+	n=sendto(udp_fd,text,strlen(text),0,res->ai_addr,res->ai_addrlen);
+	if(n==-1) /*error*/ exit(1);
+
+	printf("enviou!\n");
+
+	addrlen=sizeof(addr);
+	n= recvfrom (udp_fd,buffer,128,0,(struct sockaddr*)&addr,&addrlen);
+	if(n==-1) exit(1);
+
+	write(1,"echo: ",6);
+	write(1,buffer,n);
+
+	if(sscanf(buffer, "%s %d %d %s %d", option, &i, &k, ip, &porto)==5){
+			printf("Received EKEY\n");
+			if(k==i){
+				printf("servidor já existe no anel\n");
+			}
+			else{
+				sentry(i,k,ip,porto);
+			}
+	}
+
+	//freeaddrinfo(res);
+	//close (udp_fd);
 }

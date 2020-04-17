@@ -15,13 +15,15 @@ typedef struct stateInfo{
 
 int dist(int k, int l);
 int UserInput();
-int ReceivedMessageDealer(int fd,char *buffer,int flag_new);
 int CreateRing(int i);
 void ShowState();
 int createSocket(char *ip, int p);
+int createSocketUDP_client(int p, struct addrinfo * res);
+int createSocketUDP_server(int p);
 int messageHandler(int afd, char* buffer);
 void succMessageHandler(char *buffer);
 void predMessageHandler(char *buffer);
+void UDPMessageHandler(char *buffer);
 void sentry(int i, int succi, char* succIP, int succ_port);
 void leave();
 void sendSUCCCONF(int fd);
@@ -30,7 +32,6 @@ void sendBuffer(int fd, char *buffer);
 void succLeft();
 void find(int k,int i,char *ip,int port);
 void entry(int i, int boot, char* bootIP, int boot_port);
-int createSocketUDP_client(int p);
-int createSocketUDP_server(int p);
+
 
 #endif // HEADERS_H_INCLUDED
